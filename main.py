@@ -18,16 +18,9 @@ fake_users_db = {
         "username": "johndoe",
         "full_name": "John Doe",
         "email": "johndoe@example.com",
-        "hashed_password": "fakehashedsecret",
+        "encrypted_password": "gAAAAABmtfcebBKNutoS8DcGFKb0JKCqrAIJL-omuj0gZJEMp6y0I0cgNzz0Acjpe8aMVm1DOlIA7HpQa1nXKbq_jb63ZP3y_Q==",
         "disabled": False,
-    },
-    "alice": {
-        "username": "alice",
-        "full_name": "Alice Wonderson",
-        "email": "alice@example.com",
-        "hashed_password": "fakehashedsecret2",
-        "disabled": True,
-    },
+    }
 }
 
 
@@ -56,7 +49,7 @@ class User(BaseModel):
 class UserInDB(User):
     """User in database data model"""
 
-    hashed_password: str
+    encrypted_password: str
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -66,23 +59,23 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 app = FastAPI()
 
 
-def verify_password(plain_password, hased_password):
+def verify_password(plain_password, encrypted_password):
     """Verify password against hash"""
-    return pwd_context.verify(plain_password, hased_password)
+    from cryptography.fernet import Fernet
 
-
-def get_password_hash(password):
-    """return hashed password"""
-    return pwd_context.hash(password)
+    SECRET_KEY = "XvYvP_c4gBDLCLbjgz6Hc47ND_BcoMYt3Cz5pAKx1qQ="
+    FERNET = Fernet(SECRET_KEY)
+    print("palin_password", plain_password)
+    print("encrypted_password", encrypted_password)
+    enc_password = FERNET.encrypt(plain_password.encode()).decode()
+    print("enc_password", enc_password)
+    return enc_password == encrypted_password
 
 
 def get_user(db, username: str):
     """Return user from database"""
     if username in db:
         user_dict = db[username]
-        user_dict["hashed_password"] = get_password_hash(
-            user_dict["hashed_password"]
-        )
         return UserInDB(**user_dict)
 
 
@@ -90,9 +83,10 @@ def authenticate_user(fake_db, username: str, password: str):
     """Authenticate user with username and password"""
 
     user = get_user(fake_db, username)
+    print(user)
     if not user:
         return False
-    if not verify_password(password, user.hashed_password):
+    if not verify_password(password, user.encrypted_password):
         return False
     return user
 
@@ -100,6 +94,7 @@ def authenticate_user(fake_db, username: str, password: str):
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     """Create access token for user"""
     to_encode = data.copy()
+    print("data", data)
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
@@ -147,6 +142,7 @@ async def login_for_access_token(
     user = authenticate_user(
         fake_users_db, form_data.username, form_data.password
     )
+    print("post", user)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
