@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta
 from typing import Annotated
+from argon2 import PasswordHasher
 
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jwt.exceptions import InvalidTokenError
-from passlib.context import CryptContext
 from pydantic import BaseModel
 
 # secret key to generate hashed password
@@ -13,12 +13,15 @@ SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
+# hash password helper
+ph = PasswordHasher()
+
 fake_users_db = {
     "johndoe": {
         "username": "johndoe",
         "full_name": "John Doe",
         "email": "johndoe@example.com",
-        "encrypted_password": "gAAAAABmtfcebBKNutoS8DcGFKb0JKCqrAIJL-omuj0gZJEMp6y0I0cgNzz0Acjpe8aMVm1DOlIA7HpQa1nXKbq_jb63ZP3y_Q==",
+        "hashed_password": "$argon2id$v=19$m=65536,t=3,p=4$yzd1BZnEzlRxFvEIkK4yfw$wX0e4kIaTChHvuVlhgPE97penThgGo5gTzpNC4GLQuw",
         "disabled": False,
     }
 }
@@ -49,27 +52,17 @@ class User(BaseModel):
 class UserInDB(User):
     """User in database data model"""
 
-    encrypted_password: str
+    hashed_password: str
 
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 app = FastAPI()
 
 
-def verify_password(plain_password, encrypted_password):
+def verify_password(plain_password, hashed_password):
     """Verify password against hash"""
-    from cryptography.fernet import Fernet
-
-    SECRET_KEY = "XvYvP_c4gBDLCLbjgz6Hc47ND_BcoMYt3Cz5pAKx1qQ="
-    FERNET = Fernet(SECRET_KEY)
-    print("palin_password", plain_password)
-    print("encrypted_password", encrypted_password)
-    enc_password = FERNET.encrypt(plain_password.encode()).decode()
-    print("enc_password", enc_password)
-    return enc_password == encrypted_password
+    return ph.verify(hashed_password, plain_password)
 
 
 def get_user(db, username: str):
@@ -83,10 +76,9 @@ def authenticate_user(fake_db, username: str, password: str):
     """Authenticate user with username and password"""
 
     user = get_user(fake_db, username)
-    print(user)
     if not user:
         return False
-    if not verify_password(password, user.encrypted_password):
+    if not verify_password(password, user.hashed_password):
         return False
     return user
 
@@ -94,7 +86,6 @@ def authenticate_user(fake_db, username: str, password: str):
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     """Create access token for user"""
     to_encode = data.copy()
-    print("data", data)
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
@@ -142,7 +133,6 @@ async def login_for_access_token(
     user = authenticate_user(
         fake_users_db, form_data.username, form_data.password
     )
-    print("post", user)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
