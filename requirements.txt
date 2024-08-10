@@ -2,3 +2,5 @@ fastapi[standard]==0.112.0
 python-multipart==0.0.9
 pyjwt==2.9.0
 argon2-cffi==23.1.0
+httpx
+pytest
